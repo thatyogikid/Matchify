@@ -1,0 +1,21 @@
+{%if user.is_authenticated%}
+<h1> Hi, {{user.username}}<br>
+    Welcome to my website
+</h1>
+
+<form action = "logout">
+    <input type = "submit" value = "Logout here!" />
+</form>
+
+{%else%}
+<h1> Hi <br>
+    Welcome to my website
+
+<form action = "login">
+    <input type = "submit" value = "Login here!" />
+</form>
+
+<form action = "register">
+    <input type = "submit" value = "Register here!" />
+</form>
+{%endif%}
