@@ -1,30 +1,54 @@
-<h1>
-    Login Now
-</h1>
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Login</title>
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css">
+    <script src="https://code.jquery.com/jquery-3.3.1.slim.min.js"></script>
+</head>
+<body>
+    <div class="container">
+        <h2>Login</h2>
+        <form method="POST">
+            {% csrf_token %}
+            <div class="form-group">
+                <label for="username">Username:</label>
+                <input type="text" class="form-control" id="username" name="username" required>
+            </div>
+            <div class="form-group">
+                <label for="password">Password:</label>
+                <input type="password" class="form-control" id="password" name="password" required>
+            </div>
+            <button type="submit" class="btn btn-primary">Login</button>
+        </form>
+        <div id="messages">
+            {% if messages %}
+                <ul class="list-group mt-3">
+                    {% for message in messages %}
+                        <li class="list-group-item list-group-item-{{ message.tags }}">{{ message }}</li>
+                    {% endfor %}
+                </ul>
+            {% endif %}
+        </div>
+        <form action="register">
+            <input type="submit" class="btn btn-link" value="No account? Register Instead!" />
+        </form>
+    </div>
+    <script>
+        // Hide messages after 10 seconds
+        setTimeout(function() {
+            var messages = document.getElementById('messages');
+            if (messages) {
+                messages.style.display = 'none';
+            }
+        }, 10000); // 10000 milliseconds = 10 seconds
 
-<style>
-    h5{
-        color: red;
-    }
-</style>
-
-{%for message in messages%}
-<h5>
-    {{message}}
-</h5>
-
-{%endfor%}
-
-<form action = "login" method = "POST">
-    {%csrf_token%}
-    <p> Username:</p>
-    <input type = "text" name = "username"/>
-    <p> Password:</p>
-    <input type = "password" name = "password" /> 
-    <br>
-    <input type = "submit"/>
-</form>
-
-<form action = "register">
-    <input type = "submit" value = "No account? Register Instead!" />
-</form>
+        // Clear existing messages before displaying new ones
+        document.addEventListener('DOMContentLoaded', function() {
+            var messages = document.getElementById('messages');
+            if (messages) {
+                messages.innerHTML = '';
+            }
+        });
+    </script>
+</body>
+</html>

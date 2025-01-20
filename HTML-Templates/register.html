@@ -1,36 +1,59 @@
-<h1>Sign up Below</h1>
-<style>
-    h5{
-        color: red;
-    }
-</style>
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Register</title>
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css">
+    <script src="https://code.jquery.com/jquery-3.3.1.slim.min.js"></script>
+</head>
+<body>
+    <div class="container">
+        <h2>Register</h2>
+        <form method="POST" action="register">
+            {% csrf_token %}
+            <div class="form-group">
+                <label for="username">Username:</label>
+                <input type="text" class="form-control" id="username" name="username" required>
+            </div>
+            <div class="form-group">
+                <label for="email">Email:</label>
+                <input type="email" class="form-control" id="email" name="email" required>
+            </div>
+            <div class="form-group">
+                <label for="password">Password:</label>
+                <input type="password" class="form-control" id="password" name="password" required>
+            </div>
+            <div class="form-group">
+                <label for="passwordrepeat">Repeat Password:</label>
+                <input type="password" class="form-control" id="passwordrepeat" name="passwordrepeat" required>
+            </div>
+            <button type="submit" class="btn btn-primary">Register</button>
+        </form>
+        <div id="messages">
+            {% if messages %}
+                <ul class="list-group mt-3">
+                    {% for message in messages %}
+                        <li class="list-group-item list-group-item-{{ message.tags }}">{{ message }}</li>
+                    {% endfor %}
+                </ul>
+            {% endif %}
+        </div>
+    </div>
+    <script>
+        // Hide messages after 10 seconds
+        setTimeout(function() {
+            var messages = document.getElementById('messages');
+            if (messages) {
+                messages.style.display = 'none';
+            }
+        }, 10000); // 10000 milliseconds = 10 seconds
 
-{% for message in messages %}
-<h5>
-    {{message}}
-</h5>
-{%endfor%}
-
-<form method = "POST" action = "register">
-    {% csrf_token %}
-    <p>
-        Username:
-    </p>
-    <input type = "text" name = "username" />
-
-    <p>
-        Email:
-    </p>
-    <input type = "email" name = "email" />
-    <p>
-        Password:
-    </p>
-    <input type = "password" name = "password" />
-    <p>
-        Repeat Password:
-    </p>
-    <input type = "password" name = "passwordrepeat" /> <br>
-    <br>
-
-    <input type="submit">
-</form>
+        // Clear existing messages before displaying new ones
+        document.addEventListener('DOMContentLoaded', function() {
+            var messages = document.getElementById('messages');
+            if (messages) {
+                messages.innerHTML = '';
+            }
+        });
+    </script>
+</body>
+</html>
