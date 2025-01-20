@@ -39,6 +39,7 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     "Matchifyapp",
+    'django_recaptcha',
 ]
 
 MIDDLEWARE = [
@@ -52,6 +53,8 @@ MIDDLEWARE = [
 ]
 
 ROOT_URLCONF = 'Matchify.urls'
+RECAPTCHA_PUBLIC_KEY = "6Ldir7wqAAAAAJg9dKIQCrI-8ltQEtSozTQNrzrC"
+RECAPTCHA_PRIVATE_KEY = "6Ldir7wqAAAAAMhwSY43TxvfEauMCNtWPbNq_BX6"
 
 TEMPLATES = [
     {
@@ -114,6 +117,7 @@ USE_I18N = True
 USE_TZ = True
 
 
+
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/5.1/howto/static-files/
 
@@ -125,3 +129,13 @@ STATICFILES_DIRS = (os.path.join(BASE_DIR, "static"),)
 # https://docs.djangoproject.com/en/5.1/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+EMAIL_HOST = 'smtp.gmail.com'
+EMAIL_FROM = 'matchify.me@gmail.com'
+EMAIL_HOST_USER = 'matchify.me@gmail.com'
+EMAIL_HOST_PASSWORD = 'ipennxrxnvlbykfk'
+EMAIL_PORT = 587
+EMAIL_USE_TLS = True
+
+PASSWORD_RESET_TIMEOUT = 14400
