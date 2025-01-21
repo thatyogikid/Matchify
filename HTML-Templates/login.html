@@ -1,54 +1,88 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Login</title>
-    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css">
-    <script src="https://code.jquery.com/jquery-3.3.1.slim.min.js"></script>
+    <style>
+        h5 {
+            color: red;
+        }
+        .container {
+            max-width: 400px;
+            margin: 0 auto;
+            padding: 20px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+        }
+        .form-group input {
+            width: 100%;
+            padding: 8px;
+            box-sizing: border-box;
+        }
+        .btn {
+            display: inline-block;
+            padding: 10px 15px;
+            font-size: 16px;
+            cursor: pointer;
+            text-align: center;
+            text-decoration: none;
+            outline: none;
+            color: #fff;
+            background-color: #007bff;
+            border: none;
+            border-radius: 5px;
+            box-shadow: 0 4px #999;
+        }
+        .btn:hover {background-color: #0069d9}
+        .btn:active {
+            background-color: #0069d9;
+            box-shadow: 0 2px #666;
+            transform: translateY(2px);
+        }
+    </style>
 </head>
 <body>
+    <h1>Login Now</h1>
+    <div id="messages">
+        {% if messages %}
+            {% for message in messages %}
+                <h5 class="message">{{ message }}</h5>
+            {% endfor %}
+        {% endif %}
+    </div>
+    <script>
+        setTimeout(function() {
+            var messages = document.querySelectorAll('.message');
+            messages.forEach(function(message) {
+                message.style.display = 'none';
+            });
+        }, 5000);
+    </script>
     <div class="container">
-        <h2>Login</h2>
-        <form method="POST">
+        <form id="loginForm" action="login" method="POST">
             {% csrf_token %}
             <div class="form-group">
-                <label for="username">Username:</label>
-                <input type="text" class="form-control" id="username" name="username" required>
+                <label for="username">Username or Email:</label>
+                <input type="text" id="username" name="username" required>
             </div>
             <div class="form-group">
                 <label for="password">Password:</label>
-                <input type="password" class="form-control" id="password" name="password" required>
+                <input type="password" id="password" name="password" required>
             </div>
             <button type="submit" class="btn btn-primary">Login</button>
         </form>
-        <div id="messages">
-            {% if messages %}
-                <ul class="list-group mt-3">
-                    {% for message in messages %}
-                        <li class="list-group-item list-group-item-{{ message.tags }}">{{ message }}</li>
-                    {% endfor %}
-                </ul>
-            {% endif %}
-        </div>
         <form action="register">
-            <input type="submit" class="btn btn-link" value="No account? Register Instead!" />
+            <button type="submit" class="btn btn-secondary">No account? Register Instead!</button>
         </form>
     </div>
-    <script>
-        // Hide messages after 10 seconds
-        setTimeout(function() {
-            var messages = document.getElementById('messages');
-            if (messages) {
-                messages.style.display = 'none';
-            }
-        }, 10000); // 10000 milliseconds = 10 seconds
-
-        // Clear existing messages before displaying new ones
-        document.addEventListener('DOMContentLoaded', function() {
-            var messages = document.getElementById('messages');
-            if (messages) {
-                messages.innerHTML = '';
-            }
-        });
-    </script>
 </body>
 </html>
