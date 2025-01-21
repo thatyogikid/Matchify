@@ -17,18 +17,29 @@ logger = logging.getLogger(__name__)
 # Create your views here.
 def login(request):
     if request.method == "POST":
-        username = request.POST["username"]
+        identifier = request.POST["username"]
         password = request.POST["password"]
-        user = auth.authenticate(username = username, password = password)
+        
+        # Check if the identifier is an email or username
+        if '@' in identifier:
+            try:
+                user = get_user_model().objects.get(email=identifier)
+                username = user.username
+            except get_user_model().DoesNotExist:
+                messages.error(request, "Invalid Credentials")
+                return redirect("login")
+        else:
+            username = identifier
+        
+        user = authenticate(username=username, password=password)
 
         if user is not None:
             auth.login(request, user)
             return redirect("/")
         else:
-            messages.info(request, "Credentials invalid")
+            messages.error(request, "Invalid Credentials")
             return redirect("login")
-    else:
-        return render(request, 'login.html')
+    return render(request, "login.html")
     
 def logout(request):
     auth.logout(request)
@@ -62,6 +73,7 @@ def verify_email(request, username):
         else:
             messages.warning(request, "Invalid OTP.")
             return redirect("verify_email", username=user.username)
+    
     context = {"username": username}
     return render(request, "verifyOTP.html", context)
 
@@ -100,12 +112,14 @@ def send_otp_email(user):
 def resend_otp(request):
     if request.method == 'POST':
         user_email = request.POST["otp_email"]
-        
         if get_user_model().objects.filter(email=user_email).exists():
-            user = get_user_model().objects.get(email=user_email)
-            send_otp_email(user)
-            messages.success(request, "A new OTP has been sent to your email address")
-            return redirect("verify_email", username=user.username)
+            if get_user_model().objects.get(email=user_email).is_active:
+                messages.info(request, "This email is already verified")
+            else:
+                user = get_user_model().objects.get(email=user_email)
+                send_otp_email(user)
+                messages.success(request, "A new OTP has been sent to your email address")
+                return redirect("verify_email", username=user.username)
         else:
             messages.warning(request, "This email doesn't exist in the database")
             return redirect("resend_otp")
@@ -126,6 +140,8 @@ def register(request):
         password = request.POST['password']
         passwordrepeat = request.POST['passwordrepeat']
 
+        if password.length <= 8:
+            messages.info(request, 'Password Must Be At Least 8 Characters')   
         if password == passwordrepeat:
             if get_user_model().objects.filter(email=email).exists():
                 messages.info(request, 'Email Already Used')
@@ -139,11 +155,10 @@ def register(request):
                 user.save()
                 send_otp_email(user)
                 messages.success(request, "Account created successfully! An OTP was sent to your Email")
-                return redirect("verify_email", username=request.POST['username'])
-        
+                return redirect("verify_email", username=username)
         else:
             messages.info(request, 'Passwords Do Not Match')
             return redirect('register')
     else:
         return render(request, 'register.html')
-    
+     

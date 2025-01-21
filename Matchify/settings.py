@@ -52,6 +52,7 @@ MIDDLEWARE = [
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
 
+
 ROOT_URLCONF = 'Matchify.urls'
 RECAPTCHA_PUBLIC_KEY = "6Ldir7wqAAAAAJg9dKIQCrI-8ltQEtSozTQNrzrC"
 RECAPTCHA_PRIVATE_KEY = "6Ldir7wqAAAAAMhwSY43TxvfEauMCNtWPbNq_BX6"
@@ -124,6 +125,15 @@ USE_TZ = True
 STATIC_URL = 'static/'
 STATICFILES_DIRS = (os.path.join(BASE_DIR, "static"),)
 
+from django.contrib.messages import constants as message_constants
+
+MESSAGE_TAGS = {
+    message_constants.DEBUG: 'debug',
+    message_constants.INFO: 'info',
+    message_constants.SUCCESS: 'success',
+    message_constants.WARNING: 'warning',
+    message_constants.ERROR: 'danger',
+}
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.1/ref/settings/#default-auto-field
