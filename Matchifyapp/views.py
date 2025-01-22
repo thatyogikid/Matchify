@@ -1,48 +1,52 @@
 import random
 import logging
 from django.shortcuts import render, redirect, get_object_or_404
-from .forms import RegisterForm
 from .models import OtpToken
 from django.contrib import messages
-from django.contrib.auth import get_user_model, authenticate, login, logout
+from django.contrib.auth import get_user_model, authenticate, login as auth_login, logout as auth_logout
 from django.utils import timezone
 from django.contrib.auth.models import auth
 from django.core.mail import send_mail
 from django.db.models.signals import post_save
 from django.dispatch import receiver
 from django.contrib.auth import get_user_model
+from .forms import LoginForm, RegisterForm
 
 logger = logging.getLogger(__name__)
 
 # Create your views here.
 def login(request):
     if request.method == "POST":
-        identifier = request.POST["username"]
-        password = request.POST["password"]
-        
-        # Check if the identifier is an email or username
-        if '@' in identifier:
-            try:
-                user = get_user_model().objects.get(email=identifier)
-                username = user.username
-            except get_user_model().DoesNotExist:
+        form = LoginForm(request, data=request.POST)
+        if form.is_valid():
+            identifier = form.cleaned_data["username"]
+            password = form.cleaned_data["password"]
+            
+            # Check if the identifier is an email or username
+            if '@' in identifier:
+                try:
+                    user = get_user_model().objects.get(email=identifier)
+                    username = user.username
+                except get_user_model().DoesNotExist:
+                    messages.error(request, "Invalid Credentials")
+                    return redirect("login")
+            else:
+                username = identifier
+            
+            user = authenticate(request, username=username, password=password)
+
+            if user is not None:
+                auth_login(request, user)
+                return redirect("/")
+            else:
                 messages.error(request, "Invalid Credentials")
                 return redirect("login")
-        else:
-            username = identifier
-        
-        user = authenticate(username=username, password=password)
+    else:
+        form = LoginForm()
+    return render(request, "login.html", {"form": form})
 
-        if user is not None:
-            auth.login(request, user)
-            return redirect("/")
-        else:
-            messages.error(request, "Invalid Credentials")
-            return redirect("login")
-    return render(request, "login.html")
-    
 def logout(request):
-    auth.logout(request)
+    auth_logout(request)
     return redirect("/")
 
 def home(request):
@@ -135,30 +139,32 @@ def user_post_save(sender, instance, created, **kwargs):
 
 def register(request):
     if request.method == "POST":
-        username = request.POST['username']
-        email = request.POST['email']
-        password = request.POST['password']
-        passwordrepeat = request.POST['passwordrepeat']
+        form = RegisterForm(request.POST)
+        if form.is_valid():
+            username = form.cleaned_data['username']
+            email = form.cleaned_data['email']
+            password = form.cleaned_data['password']
+            passwordrepeat = form.cleaned_data['passwordrepeat']
 
-        if password.length <= 8:
-            messages.info(request, 'Password Must Be At Least 8 Characters')   
-        if password == passwordrepeat:
-            if get_user_model().objects.filter(email=email).exists():
-                messages.info(request, 'Email Already Used')
-                return redirect('register')
-            elif get_user_model().objects.filter(username=username).exists():
-                messages.info(request, 'Username Already Taken')
-                return redirect('register')
+            if len(password) <= 8:
+                messages.info(request, 'Password Must Be At Least 8 Characters')   
+            if password == passwordrepeat:
+                if get_user_model().objects.filter(email=email).exists():
+                    messages.info(request, 'Email Already Used')
+                    return redirect('register')
+                elif get_user_model().objects.filter(username=username).exists():
+                    messages.info(request, 'Username Already Taken')
+                    return redirect('register')
+                else:
+                    user = get_user_model().objects.create_user(username=username, email=email, password=password)
+                    user.is_active = False
+                    user.save()
+                    send_otp_email(user)
+                    messages.success(request, "Account created successfully! An OTP was sent to your Email")
+                    return redirect("verify_email", username=username)
             else:
-                user = get_user_model().objects.create_user(username=username, email=email, password=password)
-                user.is_active = False
-                user.save()
-                send_otp_email(user)
-                messages.success(request, "Account created successfully! An OTP was sent to your Email")
-                return redirect("verify_email", username=username)
-        else:
-            messages.info(request, 'Passwords Do Not Match')
-            return redirect('register')
+                messages.info(request, 'Passwords Do Not Match')
+                return redirect('register')
     else:
-        return render(request, 'register.html')
-     
+        form = RegisterForm()
+    return render(request, 'register.html', {"form": form})

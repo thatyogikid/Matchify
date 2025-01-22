@@ -39,7 +39,8 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     "Matchifyapp",
-    'django_recaptcha',
+    "django_recaptcha",
+
 ]
 
 MIDDLEWARE = [

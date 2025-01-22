@@ -1,14 +1,17 @@
+# forms.py
 from django import forms
-from django.contrib.auth.forms import UserCreationForm
-from django.contrib.auth import get_user_model 
+from django.contrib.auth.forms import AuthenticationForm
+from django.contrib.auth import get_user_model
+from django_recaptcha.fields import ReCaptchaField
 
+class LoginForm(AuthenticationForm):
+    captcha = ReCaptchaField()
 
-class RegisterForm(UserCreationForm):
-    email=forms.CharField(widget=forms.EmailInput(attrs={"placeholder": "Enter email-address", "class": "form-control"}))
-    username=forms.CharField(widget=forms.TextInput(attrs={"placeholder": "Enter email-username", "class": "form-control"}))
-    password1=forms.CharField(label="Password", widget=forms.PasswordInput(attrs={"placeholder": "Enter password", "class": "form-control"}))
-    password2=forms.CharField(label="Confirm Password", widget=forms.PasswordInput(attrs={"placeholder": "Confirm password", "class": "form-control"}))
-    
+class RegisterForm(forms.ModelForm):
+    password = forms.CharField(widget=forms.PasswordInput, label="Password")
+    passwordrepeat = forms.CharField(widget=forms.PasswordInput, label="Repeat Password")
+    captcha = ReCaptchaField()
+
     class Meta:
         model = get_user_model()
-        fields = ["email", "username", "password1", "password2"]
+        fields = ['username', 'email', 'password', 'passwordrepeat']
