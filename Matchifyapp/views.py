@@ -5,12 +5,21 @@ from .models import OtpToken
 from django.contrib import messages
 from django.contrib.auth import get_user_model, authenticate, login as auth_login, logout as auth_logout
 from django.utils import timezone
+from rest_framework import status
+from rest_framework import response
+from rest_framework.views import APIView
 from django.contrib.auth.models import auth
 from django.core.mail import send_mail
 from django.db.models.signals import post_save
-from django.dispatch import receiver
 from django.contrib.auth import get_user_model
 from .forms import LoginForm, RegisterForm
+import base64
+from requests import post, get, Request
+import json
+from . import extras
+from .models import spotifyToken
+from spotipy import Spotify
+from .credentials import CLIENT_ID, CLIENT_SECRET, REDIRECT_URI
 
 logger = logging.getLogger(__name__)
 
@@ -168,3 +177,104 @@ def register(request):
     else:
         form = RegisterForm()
     return render(request, 'register.html', {"form": form})
+
+class AuthenticationURL(APIView):
+    def get(self, request, format = None):
+        scopes = "user-top-read"
+        url = Request("GET", "https://accounts.spotify.com/authorize", params= {
+            "scope" : scopes,
+            "response_type" : "code",
+            "redirect_uri" : REDIRECT_URI,
+            "client_id": CLIENT_ID
+        }).prepare().url
+        return redirect(url)
+    
+def spotify_redirect(request, format = None):
+    code = request.GET.get("code")
+    error = request.GET.get("error")
+
+    if error:
+        return error
+
+    response = post("https://accounts.spotify.com/api/token", data = {
+        "grant_type" : "authorization_code",
+        "code" : code,
+        "redirect_uri" : REDIRECT_URI,
+        "client_id" : CLIENT_ID,
+        "client_secret" : CLIENT_SECRET
+    }).json()
+
+    access_token = response.get("access_token")
+    refresh_token = response.get("refresh_token")
+    expires_in = response.get("expires_in")
+    token_type = response.get("token_type")
+
+    authKey = request.session.session_key
+    if not request.session.exists(authKey):
+        request.session.create()
+        authKey = request.session.session_key
+
+    extras.create_or_update_spotifyTokens(
+        session_id = authKey,
+        access_token = access_token,
+        refresh_token = refresh_token,
+        expires_in = expires_in,
+        token_type = token_type
+    )
+    redirect_url = "http://127.0.0.1:8000/success"
+    return redirect(redirect_url)
+
+def success(request, format = None):
+    return render(request, "success.html")
+
+class CheckAuthentication(APIView):
+    def get(self, request, format = None):
+        key = self.request.session.session_key
+        if not self.request.session.exists(key):
+            self.request.session.create()
+            key = self.request.session.session_key
+        
+        auth_status = extras.is_spotify_authenticated(key)
+
+        if auth_status:
+            redirect_url = "http://127.0.0.1:8000/success"
+            return redirect(redirect_url)
+        else:
+            redirect_url = "http://127.0.0.1:8000/auth-url"
+            return redirect(redirect_url)
+
+
+client_id = CLIENT_ID
+client_secret = CLIENT_SECRET
+
+def get_token(user):
+    user_spotify_token = spotifyToken.objects.filter(user=user)
+    return user_spotify_token
+
+def get_auth_header(user):
+    token = get_token(user)
+    return {
+        "Authorization": "Bearer " + token
+    }
+
+def search_for_artist(token, artist_name):
+    url = "https://api.spotify.com/v1/search"
+    headers = get_auth_header(token)
+    query = f"?q={artist_name}&type=artist&limit=1"
+    query_url = url + query
+    result = get(query_url, headers=headers)
+    json_result = json.loads(result.content)["artists"]["items"]
+    if len(json_result) == 0:
+        print("No artist found")
+        return None
+    return json_result[0]
+
+def get_top_artists(user):
+    token = get_token(user)
+    url = "http://api.spotify.com/v1/"
+    query = "me/top/artists"
+    query_url = url + query
+    headers = get_auth_header(token)
+    result = get(query_url, headers=headers)
+    json_result = json.loads(result.content)["tracks"]
+    return json_result

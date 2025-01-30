@@ -40,7 +40,8 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     "Matchifyapp",
     "django_recaptcha",
-
+    "rest_framework",
+    "rest_framework.authtoken",
 ]
 
 MIDDLEWARE = [
@@ -82,8 +83,11 @@ WSGI_APPLICATION = 'Matchify.wsgi.application'
 
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': "matchify",
+        "USER": "postgres",
+        "PASSWORD": "admin123",
+        "HOST": "localhost",
     }
 }
 
@@ -150,3 +154,4 @@ EMAIL_PORT = 587
 EMAIL_USE_TLS = True
 
 PASSWORD_RESET_TIMEOUT = 14400
+
