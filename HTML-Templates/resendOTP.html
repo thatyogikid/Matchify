@@ -3,78 +3,38 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Resend OTP</title>
-    <style>
-        h5 {
-            color: red;
-        }
-        .container {
-            max-width: 400px;
-            margin: 0 auto;
-            padding: 20px;
-            border: 1px solid #ccc;
-            border-radius: 5px;
-            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
-        }
-        .form-group {
-            margin-bottom: 15px;
-        }
-        .form-group label {
-            display: block;
-            margin-bottom: 5px;
-        }
-        .form-group input {
-            width: 100%;
-            padding: 8px;
-            box-sizing: border-box;
-        }
-        .btn {
-            display: inline-block;
-            padding: 10px 15px;
-            font-size: 16px;
-            cursor: pointer;
-            text-align: center;
-            text-decoration: none;
-            outline: none;
-            color: #fff;
-            background-color: #007bff;
-            border: none;
-            border-radius: 5px;
-            box-shadow: 0 4px #999;
-        }
-        .btn:hover {background-color: #0069d9}
-        .btn:active {
-            background-color: #0069d9;
-            box-shadow: 0 2px #666;
-            transform: translateY(2px);
-        }
-    </style>
+    <title>Resend OTP - Matchify</title>
+    <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body>
-    <h1>Resend OTP</h1>
-    <div id="messages">
-        {% if messages %}
-            {% for message in messages %}
-                <h5 class="message">{{ message }}</h5>
-            {% endfor %}
-        {% endif %}
-    </div>
-    <script>
-        setTimeout(function() {
-            var messages = document.querySelectorAll('.message');
-            messages.forEach(function(message) {
-                message.style.display = 'none';
-            });
-        }, 5000);
-    </script>
-    <div class="container">
-        <form method="POST">
+<body class="bg-black text-white min-h-screen flex items-center justify-center">
+    <div class="text-center max-w-md p-6 bg-gray-800 rounded-lg shadow-lg">
+        <h1 class="text-4xl font-bold text-green-500 mb-4">Resend OTP</h1>
+        <!-- Messages -->
+        <div id="messages">
+            {% if messages %}
+                {% for message in messages %}
+                    <h5 class="text-red-500 mb-4">{{ message }}</h5>
+                {% endfor %}
+            {% endif %}
+        </div>
+        <script>
+            setTimeout(function() {
+                var messages = document.querySelectorAll('.text-red-500');
+                messages.forEach(function(message) {
+                    message.style.display = 'none';
+                });
+            }, 5000);
+        </script>
+        <!-- Resend OTP Form -->
+        <form method="POST" class="mb-4">
             {% csrf_token %}
-            <div class="form-group">
-                <label for="email">Email:</label>
-                <input type="email" id="email" name="otp_email" required>
+            <div class="mb-4">
+                <label for="email" class="block text-sm font-medium text-white">Email</label>
+                <input type="email" name="email" id="email" class="mt-1 block w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-green-500 focus:border-green-500 sm:text-sm">
             </div>
-            <button type="submit" class="btn btn-primary">Resend OTP</button>
+            <button type="submit" class="bg-green-500 hover:bg-green-600 text-white font-semibold py-3 px-6 rounded-full shadow-md transition-transform transform hover:scale-105 w-full">
+                Resend OTP
+            </button>
         </form>
     </div>
 </body>

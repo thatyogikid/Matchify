@@ -1,3 +1,4 @@
+from datetime import timedelta
 import random
 import logging
 from django.shortcuts import render, redirect, get_object_or_404
@@ -20,6 +21,13 @@ from . import extras
 from .models import spotifyToken
 from spotipy import Spotify
 from .credentials import CLIENT_ID, CLIENT_SECRET, REDIRECT_URI
+from django.contrib.auth.decorators import login_required
+from django.utils.decorators import method_decorator
+from rest_framework.response import Response
+from django.conf import settings
+import requests
+from django.http import JsonResponse
+from django.urls import reverse
 
 logger = logging.getLogger(__name__)
 
@@ -37,8 +45,7 @@ def login(request):
                     user = get_user_model().objects.get(email=identifier)
                     username = user.username
                 except get_user_model().DoesNotExist:
-                    messages.error(request, "Invalid Credentials")
-                    return redirect("login")
+                    return JsonResponse({'success': False, 'messages': ["Invalid Credentials"]})
             else:
                 username = identifier
             
@@ -46,10 +53,21 @@ def login(request):
 
             if user is not None:
                 auth_login(request, user)
-                return redirect("/")
+                return JsonResponse({'success': True, 'redirect_url': '/'})
             else:
-                messages.error(request, "Invalid Credentials")
-                return redirect("login")
+                return JsonResponse({'success': False, 'messages': ["Invalid Credentials"]})
+        else:
+            # Flatten form errors into a list of strings, excluding "__all__"
+            errors = []
+            for field, error_list in form.errors.items():
+                if field == "__all__":
+                    # Handle non-field errors separately
+                    errors.extend(error_list)
+                else:
+                    # Handle field-specific errors
+                    for error in error_list:
+                        errors.append(f"{field}: {error}")
+            return JsonResponse({'success': False, 'messages': errors})
     else:
         form = LoginForm()
     return render(request, "login.html", {"form": form})
@@ -142,9 +160,14 @@ def resend_otp(request):
 
 def user_post_save(sender, instance, created, **kwargs):
     if created:
-        send_otp_email(instance)
+        send_otp_email(instance) 
     User = get_user_model()
     post_save.connect(user_post_save, sender=User)
+
+from django.http import JsonResponse
+from django.contrib.auth import get_user_model
+from django.core.mail import send_mail
+from .forms import RegisterForm
 
 def register(request):
     if request.method == "POST":
@@ -155,29 +178,53 @@ def register(request):
             password = form.cleaned_data['password']
             passwordrepeat = form.cleaned_data['passwordrepeat']
 
+            # Validate password length
             if len(password) <= 8:
-                messages.info(request, 'Password Must Be At Least 8 Characters')   
-            if password == passwordrepeat:
-                if get_user_model().objects.filter(email=email).exists():
-                    messages.info(request, 'Email Already Used')
-                    return redirect('register')
-                elif get_user_model().objects.filter(username=username).exists():
-                    messages.info(request, 'Username Already Taken')
-                    return redirect('register')
+                return JsonResponse({'success': False, 'messages': ['Password must be at least 8 characters.']})
+
+            # Check if passwords match
+            if password != passwordrepeat:
+                return JsonResponse({'success': False, 'messages': ['Passwords do not match.']})
+
+            # Check if email is already used
+            if get_user_model().objects.filter(email=email).exists():
+                return JsonResponse({'success': False, 'messages': ['Email is already used.']})
+
+            # Check if username is already taken
+            if get_user_model().objects.filter(username=username).exists():
+                return JsonResponse({'success': False, 'messages': ['Username is already taken.']})
+
+            # Create the user
+            user = get_user_model().objects.create_user(username=username, email=email, password=password)
+            user.is_active = False
+            user.save()
+
+            # Send OTP email
+            send_otp_email(user)
+
+            # Return success response
+            return JsonResponse({
+                'success': True,
+                'redirect_url': reverse('verify_email', args=[username]),  # Redirect to verify_email page
+                'messages': ['Account created successfully! An OTP was sent to your email.']
+            })
+        else:
+            # Flatten form errors into a list of strings, excluding "__all__"
+            errors = []
+            for field, error_list in form.errors.items():
+                if field == "__all__":
+                    # Handle non-field errors separately
+                    errors.extend(error_list)
                 else:
-                    user = get_user_model().objects.create_user(username=username, email=email, password=password)
-                    user.is_active = False
-                    user.save()
-                    send_otp_email(user)
-                    messages.success(request, "Account created successfully! An OTP was sent to your Email")
-                    return redirect("verify_email", username=username)
-            else:
-                messages.info(request, 'Passwords Do Not Match')
-                return redirect('register')
+                    # Handle field-specific errors
+                    for error in error_list:
+                        errors.append(f"{field}: {error}")
+            return JsonResponse({'success': False, 'messages': errors})
     else:
         form = RegisterForm()
     return render(request, 'register.html', {"form": form})
 
+@method_decorator(login_required, name='dispatch')
 class AuthenticationURL(APIView):
     def get(self, request, format = None):
         scopes = "user-top-read"
@@ -188,53 +235,54 @@ class AuthenticationURL(APIView):
             "client_id": CLIENT_ID
         }).prepare().url
         return redirect(url)
-    
-def spotify_redirect(request, format = None):
+
+@login_required
+def spotify_redirect(request, format=None):
     code = request.GET.get("code")
     error = request.GET.get("error")
 
     if error:
         return error
 
-    response = post("https://accounts.spotify.com/api/token", data = {
-        "grant_type" : "authorization_code",
-        "code" : code,
-        "redirect_uri" : REDIRECT_URI,
-        "client_id" : CLIENT_ID,
-        "client_secret" : CLIENT_SECRET
+    response = post("https://accounts.spotify.com/api/token", data={
+        "grant_type": "authorization_code",
+        "code": code,
+        "redirect_uri": REDIRECT_URI,
+        "client_id": CLIENT_ID,
+        "client_secret": CLIENT_SECRET
     }).json()
 
     access_token = response.get("access_token")
     refresh_token = response.get("refresh_token")
-    expires_in = response.get("expires_in")
+    expires_in = response.get("expires_in")  # Number of seconds until expiration
     token_type = response.get("token_type")
 
-    authKey = request.session.session_key
-    if not request.session.exists(authKey):
-        request.session.create()
-        authKey = request.session.session_key
+    # Calculate the expiration time
+    expires_at = timezone.now() + timedelta(seconds=expires_in)  # Corrected calculation
 
+    # Retrieve the user from the session
+    user = request.user  # Directly use the logged-in user
+
+    # Save or update the Spotify token
     extras.create_or_update_spotifyTokens(
-        session_id = authKey,
-        access_token = access_token,
-        refresh_token = refresh_token,
-        expires_in = expires_in,
-        token_type = token_type
+        user=user,  # Pass the user object
+        access_token=access_token,
+        refresh_token=refresh_token,
+        expires_in=expires_at,  # Pass the calculated expiration time
+        token_type=token_type
     )
+
     redirect_url = "http://127.0.0.1:8000/success"
     return redirect(redirect_url)
 
-def success(request, format = None):
-    return render(request, "success.html")
 
 class CheckAuthentication(APIView):
-    def get(self, request, format = None):
-        key = self.request.session.session_key
-        if not self.request.session.exists(key):
-            self.request.session.create()
-            key = self.request.session.session_key
-        
-        auth_status = extras.is_spotify_authenticated(key)
+    def get(self, request, format=None):
+        if not request.user.is_authenticated:
+            return redirect('login')  # Redirect to login page if not authenticated
+
+        user = request.user  # Directly use the logged-in user
+        auth_status = extras.is_spotify_authenticated(user)
 
         if auth_status:
             redirect_url = "http://127.0.0.1:8000/success"
@@ -242,20 +290,25 @@ class CheckAuthentication(APIView):
         else:
             redirect_url = "http://127.0.0.1:8000/auth-url"
             return redirect(redirect_url)
-
-
 client_id = CLIENT_ID
 client_secret = CLIENT_SECRET
 
 def get_token(user):
-    user_spotify_token = spotifyToken.objects.filter(user=user)
-    return user_spotify_token
+    try:
+        token = spotifyToken.objects.get(user=user)  # Retrieve a single token object
+        return token.access_token
+    except spotifyToken.DoesNotExist:
+        return None
+    
 
 def get_auth_header(user):
     token = get_token(user)
-    return {
-        "Authorization": "Bearer " + token
-    }
+    if token:
+        return {
+            "Authorization": "Bearer " + token
+        }
+    else:
+        return None
 
 def search_for_artist(token, artist_name):
     url = "https://api.spotify.com/v1/search"
@@ -278,3 +331,7 @@ def get_top_artists(user):
     result = get(query_url, headers=headers)
     json_result = json.loads(result.content)["tracks"]
     return json_result
+
+
+def success(request):
+    return render(request, "success.html")

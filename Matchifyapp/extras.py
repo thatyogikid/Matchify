@@ -5,43 +5,46 @@ from requests import post, get
 from .credentials import CLIENT_ID, CLIENT_SECRET
 BASE_URL = "http://api.spotify.com/v1/me/"
 
-def check_spotifyTokens(session_id):
-    tokens = spotifyToken.objects.filter(user=session_id)
+def check_spotifyTokens(user):
+    tokens = spotifyToken.objects.filter(user=user)
     if tokens:
         return tokens[0]
     else:
         return None
-def create_or_update_spotifyTokens(session_id, access_token, refresh_token, expires_in, token_type):
-    tokens = check_spotifyTokens(session_id)
-    expires_in = timezone.now() + timedelta(seconds=expires_in)
+    
+def create_or_update_spotifyTokens(user, access_token, refresh_token, expires_in, token_type):
+    tokens, created = spotifyToken.objects.get_or_create(
+        user=user,
+        defaults={
+            'access_token': access_token,
+            'refresh_token': refresh_token,
+            'expires_in': expires_in,  # Pass the datetime object
+            'token_type': token_type
+        }
+    )
 
-    if tokens:
+    if not created:
         tokens.access_token = access_token
         tokens.refresh_token = refresh_token
         tokens.expires_in = expires_in
         tokens.token_type = token_type
-        tokens.save(update_fields = ['access_token', 'refresh_token', 'expires_in', 'token_type'])
-
-    else:
-        tokens = spotifyToken(
-            user = session_id,
-            access_token = access_token,
-            refresh_token = refresh_token,
-            expires_in = expires_in,
-            token_type = token_type
-        )
-        tokens.save()
-def is_spotify_authenticated(session_id):
-    tokens = check_spotifyTokens(session_id)
+        tokens.save(update_fields=['access_token', 'refresh_token', 'expires_in', 'token_type'])
+    
+def is_spotify_authenticated(user):
+    tokens = spotifyToken.objects.filter(user=user).first()
     if tokens:
         expiry = tokens.expires_in
-        if expiry <= timezone.now():
-            refresh_spotify_token(session_id)
+        if expiry <= timezone.now():  # Check if the token has expired
+            refresh_spotify_token(user)
         return True
     return False
 
-def refresh_spotify_token(session_id):
-    refresh_token = check_spotifyTokens(session_id).refresh_token
+def refresh_spotify_token(user):
+    tokens = spotifyToken.objects.filter(user=user).first()
+    if not tokens:
+        return False
+
+    refresh_token = tokens.refresh_token
     response = post("https://accounts.spotify.com/api/token", data={
         "grant_type": "refresh_token",
         "refresh_token": refresh_token,
@@ -50,24 +53,31 @@ def refresh_spotify_token(session_id):
     }).json()
 
     access_token = response.get('access_token')
-    expires_in = response.get('expires_in')
+    expires_in = response.get('expires_in')  # Number of seconds until expiration
     token_type = response.get('token_type')
 
+    # Calculate the expiration time
+    expires_at = timezone.now() + timedelta(seconds=expires_in)  # Corrected calculation
+
     create_or_update_spotifyTokens(
-        session_id = session_id,
-        access_token = access_token,
-        refresh_token = refresh_token,
-        expires_in = expires_in,
-        token_type = token_type
+        user=user,
+        access_token=access_token,
+        refresh_token=refresh_token,
+        expires_in=expires_at,  # Pass the calculated expiration time
+        token_type=token_type
     )
 
-def spotify_requests_execution(session_id, endpoint):
-    tokens = check_spotifyTokens(session_id)
+def spotify_requests_execution(user, endpoint):
+    tokens = check_spotifyTokens(user)
+    if not tokens:
+        return {'Error': 'No tokens found for this user.'}
+
     headers = {
         "Content-Type": "application/json",
-        "Authorization": "Bearer " + tokens.access_token}
-    response = get(BASE_URL + endpoint, {}, headers = headers)
+        "Authorization": "Bearer " + tokens.access_token
+    }
+    response = get(BASE_URL + endpoint, {}, headers=headers)
     try:
         return response.json()
     except:
-        return {'Error': 'Issue with request'} 
+        return {'Error': 'Issue with request'}
