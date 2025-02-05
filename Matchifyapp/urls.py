@@ -13,4 +13,5 @@ urlpatterns = [
     path("redirect/", views.spotify_redirect, name="redirect"),
     path("check-auth", CheckAuthentication.as_view(), name="check-auth"),
     path("success", views.success, name="success"),
+    path("top-artists", views.top_artists, name="top_artists"),
 ]

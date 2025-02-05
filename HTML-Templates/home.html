@@ -19,7 +19,12 @@
                     Authenticate with Spotify
                 </button>
             </form>
-
+            <!-- View Top Artists Button -->
+            <form action="{% url 'top_artists' %}" method="get" class="mb-4">
+                <button type="submit" class="bg-blue-500 hover:bg-blue-600 text-white font-semibold py-3 px-6 rounded-full shadow-md transition-transform transform hover:scale-105 w-full">
+                    View Top Artists
+                </button>
+            </form>
             <!-- Logout Form -->
             <form action="logout" method="post">
                 {% csrf_token %}

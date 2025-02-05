@@ -121,6 +121,10 @@
                             messagesDiv.appendChild(messagePopup);
                         });
                     }
+                    if (data.reset_captcha) {
+                        grecaptcha.reset();  // Reset the reCAPTCHA widget
+                    }
+
                 }
             })
             .catch(error => {

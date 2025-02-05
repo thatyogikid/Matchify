@@ -126,6 +126,9 @@
                             });
                         }
                     }
+                    if (data.reset_captcha) {
+                        grecaptcha.reset();  // Reset the reCAPTCHA widget
+                    }
                 })
                 .catch(error => {
                     console.error('Error:', error);

@@ -32,6 +32,11 @@ from django.urls import reverse
 logger = logging.getLogger(__name__)
 
 # Create your views here.
+from django.http import JsonResponse
+from django.shortcuts import render
+from django.contrib.auth import authenticate, login as auth_login
+from .forms import LoginForm
+
 def login(request):
     if request.method == "POST":
         form = LoginForm(request, data=request.POST)
@@ -45,7 +50,11 @@ def login(request):
                     user = get_user_model().objects.get(email=identifier)
                     username = user.username
                 except get_user_model().DoesNotExist:
-                    return JsonResponse({'success': False, 'messages': ["Invalid Credentials"]})
+                    return JsonResponse({
+                        'success': False,
+                        'messages': ["Invalid Credentials"],
+                        'reset_captcha': True  # Flag to reset CAPTCHA
+                    })
             else:
                 username = identifier
             
@@ -55,7 +64,11 @@ def login(request):
                 auth_login(request, user)
                 return JsonResponse({'success': True, 'redirect_url': '/'})
             else:
-                return JsonResponse({'success': False, 'messages': ["Invalid Credentials"]})
+                return JsonResponse({
+                    'success': False,
+                    'messages': ["Invalid Credentials"],
+                    'reset_captcha': True  # Flag to reset CAPTCHA
+                })
         else:
             # Flatten form errors into a list of strings, excluding "__all__"
             errors = []
@@ -67,7 +80,11 @@ def login(request):
                     # Handle field-specific errors
                     for error in error_list:
                         errors.append(f"{field}: {error}")
-            return JsonResponse({'success': False, 'messages': errors})
+            return JsonResponse({
+                'success': False,
+                'messages': errors,
+                'reset_captcha': True  # Flag to reset CAPTCHA
+            })
     else:
         form = LoginForm()
     return render(request, "login.html", {"form": form})
@@ -77,7 +94,7 @@ def logout(request):
     return redirect("/")
 
 def home(request):
-    return render(request, "home.html")
+    return render(request, 'home.html')
 
 def cleanup_expired_otps():
     OtpToken.objects.filter(otp_expires_at__lt=timezone.now()).delete()
@@ -179,20 +196,20 @@ def register(request):
             passwordrepeat = form.cleaned_data['passwordrepeat']
 
             # Validate password length
-            if len(password) <= 8:
-                return JsonResponse({'success': False, 'messages': ['Password must be at least 8 characters.']})
+            if len(password) < 8:
+                return JsonResponse({'success': False, 'reset_captcha': True, 'messages': ['Password must be at least 8 characters.']})
 
             # Check if passwords match
             if password != passwordrepeat:
-                return JsonResponse({'success': False, 'messages': ['Passwords do not match.']})
+                return JsonResponse({'success': False,'reset_captcha': True, 'messages': ['Passwords do not match.']})
 
             # Check if email is already used
             if get_user_model().objects.filter(email=email).exists():
-                return JsonResponse({'success': False, 'messages': ['Email is already used.']})
+                return JsonResponse({'success': False, 'reset_captcha': True, 'messages': ['Email is already used.']})
 
             # Check if username is already taken
             if get_user_model().objects.filter(username=username).exists():
-                return JsonResponse({'success': False, 'messages': ['Username is already taken.']})
+                return JsonResponse({'success': False, 'reset_captcha': True, 'messages': ['Username is already taken.']})
 
             # Create the user
             user = get_user_model().objects.create_user(username=username, email=email, password=password)
@@ -219,7 +236,7 @@ def register(request):
                     # Handle field-specific errors
                     for error in error_list:
                         errors.append(f"{field}: {error}")
-            return JsonResponse({'success': False, 'messages': errors})
+            return JsonResponse({'success': False, 'reset_captcha': True, 'messages': errors})
     else:
         form = RegisterForm()
     return render(request, 'register.html', {"form": form})
@@ -322,15 +339,71 @@ def search_for_artist(token, artist_name):
         return None
     return json_result[0]
 
-def get_top_artists(user):
+def get_top_artists(user, time_range='medium_term'):
+    """
+    Fetches the user's top 10 artists from Spotify based on the specified time range.
+
+    Args:
+        user: The authenticated user.
+        time_range (str): The time range for the top artists. Valid values are:
+                          - 'short_term' (past 4 weeks)
+                          - 'medium_term' (past 6 months)
+                          - 'long_term' (all time)
+
+    Returns:
+        list: A list of the user's top 10 artists.
+    """
+    # Get the user's Spotify token
     token = get_token(user)
-    url = "http://api.spotify.com/v1/"
-    query = "me/top/artists"
-    query_url = url + query
-    headers = get_auth_header(token)
-    result = get(query_url, headers=headers)
-    json_result = json.loads(result.content)["tracks"]
-    return json_result
+    if not token:
+        return {'Error': 'No valid token found.'}
+
+    # Spotify API endpoint for top artists
+    url = "https://api.spotify.com/v1/me/top/artists"
+
+    # Headers for the API request
+    headers = get_auth_header(user)
+    if not headers:
+        return {'Error': 'No valid token found.'}
+
+    # Query parameters
+    params = {
+        'time_range': time_range,  # Time range for the top artists
+        'limit': 10  # Fetch top 10 artists
+    }
+
+    # Make the API request
+    result = get(url, headers=headers, params=params)
+
+    # Parse the response
+    try:
+        json_result = result.json()
+        if 'items' in json_result:
+            return json_result['items']  # Return the list of top artists
+        else:
+            return {'Error': 'No top artists found.'}
+    except Exception as e:
+        return {'Error': f'Issue with request: {str(e)}'}
+    
+@login_required
+def top_artists(request):
+    # Get the time_range parameter from the request (default to 'medium_term')
+    time_range = request.GET.get('time_range', 'medium_term')
+
+    # Fetch top artists from Spotify
+    top_artists = get_top_artists(request.user, time_range)
+
+    # Handle errors
+    if 'Error' in top_artists:
+        return render(request, "topartists.html", {
+            "error": top_artists['Error'],
+            "time_range": time_range
+        })
+
+    return render(request, "topartists.html", {
+        "top_artists": top_artists,
+        "time_range": time_range
+    })
 
 
 def success(request):

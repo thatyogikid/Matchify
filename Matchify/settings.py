@@ -28,6 +28,8 @@ DEBUG = True
 
 ALLOWED_HOSTS = []
 
+LOGOUT_REDIRECT_URL = "/"
+LOGIN_URL = '/login'
 
 # Application definition
 
@@ -43,6 +45,10 @@ INSTALLED_APPS = [
     "rest_framework",
     "rest_framework.authtoken",
 ]
+
+SESSION_COOKIE_SECURE = False  # Set to True in production with HTTPS
+SESSION_COOKIE_HTTPONLY = True
+SESSION_ENGINE = 'django.contrib.sessions.backends.db'  # Default session backend
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
