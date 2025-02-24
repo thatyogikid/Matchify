@@ -2,7 +2,7 @@ from datetime import timedelta
 import random
 import logging
 from django.shortcuts import render, redirect, get_object_or_404
-from .models import OtpToken
+from .models import OtpToken, FriendRequest, Friendship
 from django.contrib import messages
 from django.contrib.auth import get_user_model, authenticate, login as auth_login, logout as auth_logout
 from django.utils import timezone
@@ -28,6 +28,7 @@ from django.conf import settings
 import requests
 from django.http import JsonResponse
 from django.urls import reverse
+from django.db.models import Q
 
 logger = logging.getLogger(__name__)
 
@@ -259,6 +260,7 @@ def spotify_redirect(request, format=None):
     error = request.GET.get("error")
 
     if error:
+        print(f"Spotify auth error: {error}")  # Debug print
         return error
 
     response = post("https://accounts.spotify.com/api/token", data={
@@ -269,23 +271,28 @@ def spotify_redirect(request, format=None):
         "client_secret": CLIENT_SECRET
     }).json()
 
+    print("Spotify token response:", response)  # Debug print
+
     access_token = response.get("access_token")
     refresh_token = response.get("refresh_token")
-    expires_in = response.get("expires_in")  # Number of seconds until expiration
+    expires_in = response.get("expires_in")
     token_type = response.get("token_type")
 
-    # Calculate the expiration time
-    expires_at = timezone.now() + timedelta(seconds=expires_in)  # Corrected calculation
+    if not all([access_token, refresh_token, expires_in, token_type]):
+        print("Missing token data:", response)  # Debug print
+        return redirect('home')
 
-    # Retrieve the user from the session
-    user = request.user  # Directly use the logged-in user
+    expires_at = timezone.now() + timedelta(seconds=expires_in)
 
-    # Save or update the Spotify token
+    # Print debug info
+    print(f"Saving token for user: {request.user.username}")
+    print(f"Access token: {access_token[:10]}...")  # Only print first 10 chars
+
     extras.create_or_update_spotifyTokens(
-        user=user,  # Pass the user object
+        user=request.user,
         access_token=access_token,
         refresh_token=refresh_token,
-        expires_in=expires_at,  # Pass the calculated expiration time
+        expires_in=expires_at,
         token_type=token_type
     )
 
@@ -322,7 +329,9 @@ def get_auth_header(user):
     token = get_token(user)
     if token:
         return {
-            "Authorization": "Bearer " + token
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json",
+            "Accept": "application/json"
         }
     else:
         return None
@@ -340,22 +349,11 @@ def search_for_artist(token, artist_name):
     return json_result[0]
 
 def get_top_artists(user, time_range='medium_term'):
-    """
-    Fetches the user's top 10 artists from Spotify based on the specified time range.
-
-    Args:
-        user: The authenticated user.
-        time_range (str): The time range for the top artists. Valid values are:
-                          - 'short_term' (past 4 weeks)
-                          - 'medium_term' (past 6 months)
-                          - 'long_term' (all time)
-
-    Returns:
-        list: A list of the user's top 10 artists.
-    """
-    # Get the user's Spotify token
     token = get_token(user)
+    print("Checking token:", token is not None)  # Debug print
+    
     if not token:
+        print("No token found for user:", user.username)  # Debug print
         return {'Error': 'No valid token found.'}
 
     # Spotify API endpoint for top artists
@@ -368,21 +366,31 @@ def get_top_artists(user, time_range='medium_term'):
 
     # Query parameters
     params = {
-        'time_range': time_range,  # Time range for the top artists
-        'limit': 10  # Fetch top 10 artists
+        'time_range': time_range,
+        'limit': 10
     }
 
     # Make the API request
+    print("Making request to:", url)  # Debug print
+    print("With headers:", headers)  # Debug print
+    print("With params:", params)  # Debug print
+    
     result = get(url, headers=headers, params=params)
+    
+    print("Response status code:", result.status_code)  # Debug print
+    print("Response content:", result.content)  # Debug print
 
     # Parse the response
     try:
         json_result = result.json()
         if 'items' in json_result:
-            return json_result['items']  # Return the list of top artists
+            return json_result['items']
         else:
+            print("JSON response but no items:", json_result)  # Debug print
             return {'Error': 'No top artists found.'}
     except Exception as e:
+        print("Failed to parse JSON:", str(e))  # Debug print
+        print("Raw response:", result.content)  # Debug print
         return {'Error': f'Issue with request: {str(e)}'}
     
 @login_required
@@ -408,3 +416,115 @@ def top_artists(request):
 
 def success(request):
     return render(request, "success.html")
+
+@login_required
+def profile(request):
+    current_user = request.user
+    current_user_spotify = extras.is_spotify_authenticated(current_user)
+    
+    # Get friend filter preference
+    show_friends_only = request.GET.get('friends_only') == 'true'
+    
+    # Get all friendships for the current user
+    friends = get_user_model().objects.filter(
+        Q(friendships1__user2=current_user) | 
+        Q(friendships2__user1=current_user)
+    )
+    
+    # Get pending friend requests
+    received_requests = FriendRequest.objects.filter(to_user=current_user)
+    sent_requests = FriendRequest.objects.filter(from_user=current_user)
+    
+    # Get other users based on filter
+    User = get_user_model()
+    if show_friends_only:
+        other_users = friends
+    else:
+        other_users = User.objects.exclude(id=current_user.id).exclude(is_superuser=True)
+    
+    users_data = []
+    
+    # Add current user's data
+    current_user_data = {
+        'user': current_user,
+        'spotify_connected': current_user_spotify,
+        'top_artists': None,
+        'is_current_user': True
+    }
+    
+    if current_user_spotify:
+        try:
+            artists = get_top_artists(current_user, time_range='medium_term')
+            if not isinstance(artists, dict):
+                current_user_data['top_artists'] = artists
+        except Exception as e:
+            print(f"Error getting current user's artists: {str(e)}")
+    
+    users_data.append(current_user_data)
+    
+    # Add other users' data
+    for user in other_users:
+        try:
+            spotify_connected = extras.is_spotify_authenticated(user)
+            user_data = {
+                'user': user,
+                'spotify_connected': spotify_connected,
+                'top_artists': None,
+                'is_current_user': False,
+                'is_friend': user in friends,
+                'friend_request_sent': sent_requests.filter(to_user=user).exists(),
+                'friend_request_received': received_requests.filter(from_user=user).exists(),
+            }
+            
+            if spotify_connected:
+                try:
+                    artists = get_top_artists(user, time_range='medium_term')
+                    if not isinstance(artists, dict):
+                        user_data['top_artists'] = artists
+                except:
+                    pass
+                    
+            users_data.append(user_data)
+        except Exception as e:
+            print(f"Error processing user {user.username}: {str(e)}")
+            continue
+    
+    return render(request, "profile.html", {
+        'users_data': users_data,
+        'received_requests': received_requests,
+        'show_friends_only': show_friends_only
+    })
+
+@login_required
+def send_friend_request(request, username):
+    to_user = get_object_or_404(get_user_model(), username=username)
+    FriendRequest.objects.create(from_user=request.user, to_user=to_user)
+    return redirect('profile')
+
+@login_required
+def accept_friend_request(request, username):
+    from_user = get_object_or_404(get_user_model(), username=username)
+    friend_request = get_object_or_404(FriendRequest, from_user=from_user, to_user=request.user)
+    
+    # Create friendship
+    Friendship.objects.create(user1=request.user, user2=from_user)
+    
+    # Delete the request
+    friend_request.delete()
+    return redirect('profile')
+
+@login_required
+def reject_friend_request(request, username):
+    from_user = get_object_or_404(get_user_model(), username=username)
+    friend_request = get_object_or_404(FriendRequest, from_user=from_user, to_user=request.user)
+    friend_request.delete()
+    return redirect('profile')
+
+@login_required
+def remove_friend(request, username):
+    friend = get_object_or_404(get_user_model(), username=username)
+    Friendship.objects.filter(
+        Q(user1=request.user, user2=friend) | 
+        Q(user1=friend, user2=request.user)
+    ).delete()
+    return redirect('profile')

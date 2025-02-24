@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Profiles - Matchify</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-black text-white min-h-screen flex items-center justify-center p-8">
+    <a href="/" class="absolute top-5 left-5 bg-blue-500 hover:bg-blue-600 text-white font-semibold py-2 px-4 rounded-full shadow-md transition-transform transform hover:scale-105">
+        ← Back to Home
+    </a>
+    
+    <div class="fixed top-5 right-5 flex gap-4">
+        <a href="?friends_only={% if show_friends_only %}false{% else %}true{% endif %}" 
+           class="bg-purple-500 hover:bg-purple-600 text-white font-semibold py-2 px-4 rounded-full shadow-md transition-transform transform hover:scale-105">
+            {% if show_friends_only %}
+                Show All Users
+            {% else %}
+                Show Friends Only
+            {% endif %}
+        </a>
+    </div>
+    
+    <div class="w-full max-w-6xl grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {% for user_data in users_data %}
+            <div class="bg-gray-800 rounded-lg shadow-lg p-6 {% if user_data.is_current_user %}ring-2 ring-green-500{% endif %}">
+                <!-- User Info -->
+                <div class="mb-6">
+                    <h2 class="text-2xl font-semibold mb-2 {% if user_data.is_current_user %}text-green-500{% else %}text-white{% endif %}">
+                        {{ user_data.user.username }}
+                        {% if user_data.is_current_user %}(You){% endif %}
+                    </h2>
+                    <p class="text-gray-400">Member since: {{ user_data.user.date_joined|date:"F j, Y" }}</p>
+                </div>
+
+                <!-- Add this after the user info section but before Spotify status -->
+                {% if not user_data.is_current_user %}
+                    <div class="mb-4">
+                        {% if user_data.is_friend %}
+                            <form action="{% url 'remove_friend' user_data.user.username %}" method="post" class="inline">
+                                {% csrf_token %}
+                                <button type="submit" class="bg-red-500 hover:bg-red-600 text-white font-semibold py-2 px-4 rounded-full text-sm">
+                                    Remove Friend
+                                </button>
+                            </form>
+                        {% elif user_data.friend_request_sent %}
+                            <p class="text-yellow-500">Friend Request Sent</p>
+                        {% elif user_data.friend_request_received %}
+                            <div class="flex gap-2 justify-center">
+                                <form action="{% url 'accept_friend_request' user_data.user.username %}" method="post" class="inline">
+                                    {% csrf_token %}
+                                    <button type="submit" class="bg-green-500 hover:bg-green-600 text-white font-semibold py-2 px-4 rounded-full text-sm">
+                                        Accept
+                                    </button>
+                                </form>
+                                <form action="{% url 'reject_friend_request' user_data.user.username %}" method="post" class="inline">
+                                    {% csrf_token %}
+                                    <button type="submit" class="bg-red-500 hover:bg-red-600 text-white font-semibold py-2 px-4 rounded-full text-sm">
+                                        Reject
+                                    </button>
+                                </form>
+                            </div>
+                        {% else %}
+                            <form action="{% url 'send_friend_request' user_data.user.username %}" method="post" class="inline">
+                                {% csrf_token %}
+                                <button type="submit" class="bg-blue-500 hover:bg-blue-600 text-white font-semibold py-2 px-4 rounded-full text-sm">
+                                    Add Friend
+                                </button>
+                            </form>
+                        {% endif %}
+                    </div>
+                {% endif %}
+
+                <!-- Spotify Status -->
+                <div class="mb-6">
+                    <h3 class="text-lg font-semibold mb-3 text-green-400">Spotify Connection</h3>
+                    {% if user_data.spotify_connected %}
+                        <p class="text-green-500 mb-2">✓ Connected to Spotify</p>
+                        
+                        <!-- Top Artists Preview -->
+                        {% if user_data.top_artists %}
+                            <div class="mt-4">
+                                <h4 class="text-md font-semibold mb-2">Top Artists</h4>
+                                <div class="text-left">
+                                    {% for artist in user_data.top_artists|slice:":3" %}
+                                        <p class="text-white mb-1">{{ forloop.counter }}. {{ artist.name }}</p>
+                                    {% endfor %}
+                                </div>
+                                {% if user_data.is_current_user %}
+                                    <a href="{% url 'top_artists' %}" class="text-green-500 hover:text-green-400 text-sm mt-2 inline-block">
+                                        View all →
+                                    </a>
+                                {% endif %}
+                            </div>
+                        {% endif %}
+                    {% else %}
+                        <p class="text-red-500 mb-2">✗ Not connected to Spotify</p>
+                        {% if user_data.is_current_user %}
+                            <a href="{% url 'auth-url' %}" class="bg-green-500 hover:bg-green-600 text-white font-semibold py-2 px-4 rounded-full shadow-md transition-transform transform hover:scale-105 inline-block mt-2">
+                                Connect Spotify
+                            </a>
+                        {% endif %}
+                    {% endif %}
+                </div>
+            </div>
+        {% endfor %}
+    </div>
+
+    <!-- Add this at the top of the page to show pending requests -->
+    {% if received_requests %}
+        <div class="fixed top-20 right-5 bg-gray-800 p-4 rounded-lg shadow-lg">
+            <h3 class="text-lg font-semibold mb-3 text-purple-400">Friend Requests</h3>
+            {% for request in received_requests %}
+                <div class="mb-2 flex items-center gap-2">
+                    <span class="text-white">{{ request.from_user.username }}</span>
+                    <div class="flex gap-1">
+                        <form action="{% url 'accept_friend_request' request.from_user.username %}" method="post" class="inline">
+                            {% csrf_token %}
+                            <button type="submit" class="bg-green-500 hover:bg-green-600 text-white font-semibold py-1 px-2 rounded-full text-xs">
+                                ✓
+                            </button>
+                        </form>
+                        <form action="{% url 'reject_friend_request' request.from_user.username %}" method="post" class="inline">
+                            {% csrf_token %}
+                            <button type="submit" class="bg-red-500 hover:bg-red-600 text-white font-semibold py-1 px-2 rounded-full text-xs">
+                                ✕
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            {% endfor %}
+        </div>
+    {% endif %}
+</body>
+</html> 

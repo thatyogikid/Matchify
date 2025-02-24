@@ -34,8 +34,9 @@ def is_spotify_authenticated(user):
     tokens = spotifyToken.objects.filter(user=user).first()
     if tokens:
         expiry = tokens.expires_in
-        if expiry <= timezone.now():  # Check if the token has expired
-            refresh_spotify_token(user)
+        if expiry <= timezone.now():
+            success = refresh_spotify_token(user)
+            return success
         return True
     return False
 
@@ -53,19 +54,23 @@ def refresh_spotify_token(user):
     }).json()
 
     access_token = response.get('access_token')
-    expires_in = response.get('expires_in')  # Number of seconds until expiration
     token_type = response.get('token_type')
+    expires_in = response.get('expires_in', 3600)  # Default to 1 hour if not provided
+    
+    # Only update if we got a valid response
+    if access_token and token_type:
+        # Calculate the expiration time
+        expires_at = timezone.now() + timedelta(seconds=expires_in)
 
-    # Calculate the expiration time
-    expires_at = timezone.now() + timedelta(seconds=expires_in)  # Corrected calculation
-
-    create_or_update_spotifyTokens(
-        user=user,
-        access_token=access_token,
-        refresh_token=refresh_token,
-        expires_in=expires_at,  # Pass the calculated expiration time
-        token_type=token_type
-    )
+        create_or_update_spotifyTokens(
+            user=user,
+            access_token=access_token,
+            refresh_token=refresh_token,  # Keep existing refresh token if not provided
+            expires_in=expires_at,
+            token_type=token_type
+        )
+        return True
+    return False
 
 def spotify_requests_execution(user, endpoint):
     tokens = check_spotifyTokens(user)
