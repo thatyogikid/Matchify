@@ -100,26 +100,23 @@
                 <button type="submit" class="bg-purple-500 hover:bg-purple-600 text-white font-semibold py-3 px-6 rounded-full shadow-md transition-transform transform hover:scale-105 w-full">
                     All Time
                 </button>
-            </form>            
+            </form>
         </div>
-        <body class="bg-black text-white min-h-screen flex items-center justify-center">
-            <div class="text-center max-w-md p-6 bg-gray-800 rounded-lg shadow-lg">
-                <!-- Header -->
-                <h1 class="text-4xl font-bold text-green-500 mb-4">Top Artists</h1>
-        
-                {% if error %}
-                    <p class="text-red-500 mb-6">{{ error }}</p>
-                {% else %}
-                    <p class="text-gray-300 text-lg mb-6">Your top artists ({{ time_range }}):</p>
-                    <div class="text-left">
-                        {% for artist in top_artists %}
-                            <div class="mb-4">
-                                <p class="text-white font-semibold">{{ forloop.counter }}. {{ artist.name }}</p>
-                                <p class="text-gray-400">{{ artist.genres|join:", " }}</p>
-                            </div>
-                        {% endfor %}
+
+        {% if error %}
+            <p class="text-red-500 mb-6">{{ error }}</p>
+        {% else %}
+            <p class="text-gray-300 text-lg mb-6">Your top artists ({{ time_range }}):</p>
+            <div class="text-left">
+                {% for artist in top_artists %}
+                    <div class="mb-4">
+                        <p class="text-white font-semibold">{{ forloop.counter }}. {{ artist.name }}</p>
+                        <p class="text-gray-400">{{ artist.genres|join:", " }}</p>
                     </div>
-                {% endif %}        
+                {% endfor %}
+            </div>
+        {% endif %}
+
         <!-- Footer -->
         <footer class="mt-8">
             <p class="text-gray-500 italic text-sm">Powered by Spotify</p>

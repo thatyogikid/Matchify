@@ -297,7 +297,7 @@ def register(request):
 @method_decorator(login_required, name='dispatch')
 class AuthenticationURL(APIView):
     def get(self, request, format = None):
-        scopes = "user-read-playback-state user-read-currently-playing user-read-private user-read-email user-top-read"
+        scopes = "user-read-playback-state user-read-currently-playing user-read-private user-read-email user-top-read user-read-recently-played"
         url = Request("GET", "https://accounts.spotify.com/authorize", params= {
             "scope" : scopes,
             "response_type" : "code",
@@ -370,9 +370,37 @@ class CheckAuthentication(APIView):
 client_id = CLIENT_ID
 client_secret = CLIENT_SECRET
 
+def refresh_spotify_token(user):
+    try:
+        spotify_token = spotifyToken.objects.get(user=user)
+        
+        # Check if token needs refresh
+        if spotify_token.expires_in <= timezone.now():
+            # Make refresh request to Spotify
+            response = post("https://accounts.spotify.com/api/token", data={
+                "grant_type": "refresh_token",
+                "refresh_token": spotify_token.refresh_token,
+                "client_id": CLIENT_ID,
+                "client_secret": CLIENT_SECRET
+            }).json()
+
+            # Update token in database
+            spotify_token.access_token = response.get('access_token')
+            spotify_token.expires_in = timezone.now() + timedelta(seconds=response.get('expires_in', 3600))
+            spotify_token.save()
+            
+            return spotify_token.access_token
+            
+    except Exception as e:
+        print(f"Error refreshing token: {e}")
+        return None
+
 def get_token(user):
     try:
-        token = spotifyToken.objects.get(user=user)  # Retrieve a single token object
+        token = spotifyToken.objects.get(user=user)
+        # Check if token needs refresh
+        if token.expires_in <= timezone.now():
+            return refresh_spotify_token(user)
         return token.access_token
     except spotifyToken.DoesNotExist:
         return None
@@ -466,7 +494,6 @@ def top_artists(request):
         "time_range": time_range
     })
 
-
 def success(request):
     return render(request, "success.html")
 
@@ -519,6 +546,10 @@ def profile(request):
     for user in other_users:
         try:
             spotify_connected = extras.is_spotify_authenticated(user)
+            compatibility_score = None
+            if spotify_connected and current_user_spotify:
+                compatibility_score = calculate_compatibility(current_user, user)
+                
             user_data = {
                 'user': user,
                 'spotify_connected': spotify_connected,
@@ -527,6 +558,7 @@ def profile(request):
                 'is_friend': user in friends,
                 'friend_request_sent': sent_requests.filter(to_user=user).exists(),
                 'friend_request_received': received_requests.filter(from_user=user).exists(),
+                'compatibility_score': compatibility_score
             }
             
             if spotify_connected:
@@ -591,3 +623,35 @@ def get_current_track_endpoint(request):
         'success': True,
         'timestamp': timezone.now().isoformat()
     })
+
+def calculate_compatibility(user1, user2):
+    try:
+        # Get top artists for both users
+        user1_artists = get_top_artists(user1, 'long_term')
+        user2_artists = get_top_artists(user2, 'long_term')
+        
+        if isinstance(user1_artists, dict) or isinstance(user2_artists, dict):
+            return None
+            
+        # Get artist IDs for comparison
+        user1_artist_ids = set(artist['id'] for artist in user1_artists)
+        user2_artist_ids = set(artist['id'] for artist in user2_artists)
+        
+        # Calculate common artists
+        common_artists = user1_artist_ids.intersection(user2_artist_ids)
+        
+        # Calculate genres
+        user1_genres = set(genre for artist in user1_artists for genre in artist['genres'])
+        user2_genres = set(genre for artist in user2_artists for genre in artist['genres'])
+        common_genres = user1_genres.intersection(user2_genres)
+        
+        # Calculate score (50% based on artists, 50% based on genres)
+        artist_score = len(common_artists) / max(len(user1_artist_ids), 1) * 50
+        genre_score = len(common_genres) / max(len(user1_genres), 1) * 50
+        
+        total_score = round(artist_score + genre_score)
+        return min(total_score, 100)  # Cap at 100%
+        
+    except Exception as e:
+        print(f"Error calculating compatibility: {e}")
+        return None
