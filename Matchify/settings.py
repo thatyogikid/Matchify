@@ -91,9 +91,10 @@ DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
         'NAME': "matchify",
-        "USER": "postgres",
-        "PASSWORD": "admin123",
-        "HOST": "localhost",
+        "USER": "admin123",
+        "PASSWORD": "2018lebron",
+        "HOST": "matchify.cluster-cvwqyeyo4vgx.us-east-2.rds.amazonaws.com",
+        "PORT": "5432",
     }
 }
 
