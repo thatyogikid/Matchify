@@ -19,4 +19,5 @@ urlpatterns = [
     path("accept-friend-request/<str:username>", views.accept_friend_request, name="accept_friend_request"),
     path("reject-friend-request/<str:username>", views.reject_friend_request, name="reject_friend_request"),
     path("remove-friend/<str:username>", views.remove_friend, name="remove_friend"),
+    path("get-current-track", views.get_current_track_endpoint, name="get_current_track"),
 ]

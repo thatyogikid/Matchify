@@ -94,8 +94,60 @@ def logout(request):
     auth_logout(request)
     return redirect("/")
 
+def get_current_track(user):
+    token = get_token(user)
+    if not token:
+        print("Debug: No token found")
+        return None
+
+    url = "https://api.spotify.com/v1/me/player/currently-playing"
+    headers = get_auth_header(user)
+    
+    try:
+        print("Debug: Making request to Spotify")
+        response = get(url, headers=headers)
+        print(f"Debug: Response status code: {response.status_code}")
+        print(f"Debug: Response content: {response.content[:200]}")  # Print first 200 chars
+        
+        # No content means no track is playing
+        if response.status_code == 204:
+            print("Debug: No content (204) - No track playing")
+            return None
+            
+        if response.status_code != 200:
+            print(f"Debug: Bad status code: {response.status_code}")
+            return None
+
+        data = response.json()
+        print(f"Debug: Parsed JSON data: {data.keys()}")
+        
+        # Check if something is currently playing
+        if not data.get('is_playing', False):
+            print("Debug: Track exists but not playing")
+            return None
+
+        if 'item' not in data:
+            print("Debug: No item in response")
+            return None
+
+        track_info = {
+            'name': data['item']['name'],
+            'artist': data['item']['artists'][0]['name'],
+            'album': data['item']['album']['name'],
+            'album_art': data['item']['album']['images'][0]['url'] if data['item']['album']['images'] else None
+        }
+        print(f"Debug: Returning track info: {track_info}")
+        return track_info
+    except Exception as e:
+        print(f"Debug: Exception occurred: {str(e)}")
+        return None
+
+@login_required
 def home(request):
-    return render(request, 'home.html')
+    current_track = None
+    if request.user.is_authenticated:
+        current_track = get_current_track(request.user)
+    return render(request, "home.html", {'current_track': current_track})
 
 def cleanup_expired_otps():
     OtpToken.objects.filter(otp_expires_at__lt=timezone.now()).delete()
@@ -245,12 +297,13 @@ def register(request):
 @method_decorator(login_required, name='dispatch')
 class AuthenticationURL(APIView):
     def get(self, request, format = None):
-        scopes = "user-top-read"
+        scopes = "user-read-playback-state user-read-currently-playing user-read-private user-read-email user-top-read"
         url = Request("GET", "https://accounts.spotify.com/authorize", params= {
             "scope" : scopes,
             "response_type" : "code",
             "redirect_uri" : REDIRECT_URI,
-            "client_id": CLIENT_ID
+            "client_id": CLIENT_ID,
+            "show_dialog": True  # Force re-auth to get new permissions
         }).prepare().url
         return redirect(url)
 
@@ -528,3 +581,13 @@ def remove_friend(request, username):
         Q(user1=friend, user2=request.user)
     ).delete()
     return redirect('profile')
+
+@login_required
+def get_current_track_endpoint(request):
+    track = get_current_track(request.user)
+    print(f"Debug: Endpoint returning: {track}")
+    return JsonResponse({
+        'track': track,
+        'success': True,
+        'timestamp': timezone.now().isoformat()
+    })

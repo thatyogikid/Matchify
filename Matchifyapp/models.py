@@ -14,8 +14,8 @@ class OtpToken(models.Model):
 class spotifyToken(models.Model):
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="spotify_tokens")
     created_at = models.DateTimeField(auto_now_add=True)
-    access_token = models.CharField(max_length=255)
-    refresh_token = models.CharField(max_length=255)
+    access_token = models.TextField()
+    refresh_token = models.TextField()
     expires_in = models.DateTimeField()
     token_type = models.CharField(max_length=50)
 
