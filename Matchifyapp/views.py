@@ -38,6 +38,8 @@ from django.shortcuts import render
 from django.contrib.auth import authenticate, login as auth_login
 from .forms import LoginForm
 
+
+
 def login(request):
     if request.method == "POST":
         form = LoginForm(request, data=request.POST)
@@ -142,7 +144,6 @@ def get_current_track(user):
         print(f"Debug: Exception occurred: {str(e)}")
         return None
 
-@login_required
 def home(request):
     current_track = None
     if request.user.is_authenticated:
@@ -349,7 +350,7 @@ def spotify_redirect(request, format=None):
         token_type=token_type
     )
 
-    redirect_url = "http://127.0.0.1:8000/success"
+    redirect_url = reverse('success')
     return redirect(redirect_url)
 
 
@@ -362,10 +363,10 @@ class CheckAuthentication(APIView):
         auth_status = extras.is_spotify_authenticated(user)
 
         if auth_status:
-            redirect_url = "http://127.0.0.1:8000/success"
+            redirect_url = reverse('success')
             return redirect(redirect_url)
         else:
-            redirect_url = "http://127.0.0.1:8000/auth-url"
+            redirect_url = reverse('auth-url')
             return redirect(redirect_url)
 client_id = CLIENT_ID
 client_secret = CLIENT_SECRET
@@ -497,84 +498,64 @@ def top_artists(request):
 def success(request):
     return render(request, "success.html")
 
+from django.shortcuts import render
+from django.contrib.auth.decorators import login_required
+from django.contrib.auth import get_user_model
+from .models import Friendship, FriendRequest
+
 @login_required
-def profile(request):
+def mapify(request):
     current_user = request.user
-    current_user_spotify = extras.is_spotify_authenticated(current_user)
+    User = get_user_model()
+
+    # Get friendships involving the current user
+    friendships = Friendship.objects.filter(user1=current_user) | Friendship.objects.filter(user2=current_user)
     
-    # Get friend filter preference
-    show_friends_only = request.GET.get('friends_only') == 'true'
-    
-    # Get all friendships for the current user
-    friends = get_user_model().objects.filter(
-        Q(friendships1__user2=current_user) | 
-        Q(friendships2__user1=current_user)
-    )
-    
+    # Extract user objects from friendships
+    friends = set()
+    for friendship in friendships:
+        friends.add(friendship.user1)
+        friends.add(friendship.user2)
+    friends.discard(current_user)  # Remove self from friend list
+
     # Get pending friend requests
     received_requests = FriendRequest.objects.filter(to_user=current_user)
     sent_requests = FriendRequest.objects.filter(from_user=current_user)
-    
-    # Get other users based on filter
-    User = get_user_model()
+
+    # Get other users (excluding self)
+    show_friends_only = request.GET.get('friends_only') == 'true'
     if show_friends_only:
         other_users = friends
     else:
         other_users = User.objects.exclude(id=current_user.id).exclude(is_superuser=True)
-    
+
+    # Format data properly for template
     users_data = []
-    
-    # Add current user's data
-    current_user_data = {
-        'user': current_user,
-        'spotify_connected': current_user_spotify,
-        'top_artists': None,
-        'is_current_user': True
-    }
-    
-    if current_user_spotify:
-        try:
-            artists = get_top_artists(current_user, time_range='medium_term')
-            if not isinstance(artists, dict):
-                current_user_data['top_artists'] = artists
-        except Exception as e:
-            print(f"Error getting current user's artists: {str(e)}")
-    
-    users_data.append(current_user_data)
-    
-    # Add other users' data
+
+    # Current user node
+    users_data.append({
+        'username': current_user.username,
+        'is_current_user': True,
+        'is_friend': False,  # Not needed for self
+        'friend_request_sent': False,
+        'friend_request_received': False
+    })
+
+    # Other users (friends + non-friends)
     for user in other_users:
         try:
-            spotify_connected = extras.is_spotify_authenticated(user)
-            compatibility_score = None
-            if spotify_connected and current_user_spotify:
-                compatibility_score = calculate_compatibility(current_user, user)
-                
-            user_data = {
-                'user': user,
-                'spotify_connected': spotify_connected,
-                'top_artists': None,
+            users_data.append({
+                'username': user.username,
                 'is_current_user': False,
                 'is_friend': user in friends,
                 'friend_request_sent': sent_requests.filter(to_user=user).exists(),
                 'friend_request_received': received_requests.filter(from_user=user).exists(),
-                'compatibility_score': compatibility_score
-            }
-            
-            if spotify_connected:
-                try:
-                    artists = get_top_artists(user, time_range='medium_term')
-                    if not isinstance(artists, dict):
-                        user_data['top_artists'] = artists
-                except:
-                    pass
-                    
-            users_data.append(user_data)
+            })
         except Exception as e:
             print(f"Error processing user {user.username}: {str(e)}")
             continue
-    
-    return render(request, "profile.html", {
+
+    return render(request, "mapify.html", {
         'users_data': users_data,
         'received_requests': received_requests,
         'show_friends_only': show_friends_only
@@ -584,7 +565,7 @@ def profile(request):
 def send_friend_request(request, username):
     to_user = get_object_or_404(get_user_model(), username=username)
     FriendRequest.objects.create(from_user=request.user, to_user=to_user)
-    return redirect('profile')
+    return JsonResponse({"success": True})
 
 @login_required
 def accept_friend_request(request, username):
@@ -613,6 +594,45 @@ def remove_friend(request, username):
         Q(user1=friend, user2=request.user)
     ).delete()
     return redirect('profile')
+
+@login_required
+def profile(request, username):
+    user = get_object_or_404(get_user_model(), username=username)
+    user_spotify = extras.is_spotify_authenticated(user)
+    # Get friend status
+    current_user = request.user
+    is_friend = Friendship.objects.filter(
+        Q(user1=current_user, user2=user) | Q(user1=user, user2=current_user)
+    ).exists()
+
+    friend_request_sent = FriendRequest.objects.filter(from_user=current_user, to_user=user).exists()
+    friend_request_received = FriendRequest.objects.filter(from_user=user, to_user=current_user).exists()
+
+    # Compatibility score calculation
+    compatibility_score = None
+    if user_spotify and extras.is_spotify_authenticated(current_user):
+        compatibility_score = calculate_compatibility(current_user, user)
+
+    # Fetch top artists if connected
+    top_artists = None
+    if user_spotify:
+        try:
+            top_artists = get_top_artists(user, time_range='medium_term')
+        except:
+            pass
+
+    user_data = {
+        'user': user,
+        'spotify_connected': user_spotify,
+        'top_artists': top_artists,
+        'is_current_user': current_user == user,
+        'is_friend': is_friend,
+        'friend_request_sent': friend_request_sent,
+        'friend_request_received': friend_request_received,
+        'compatibility_score': compatibility_score,
+    }
+
+    return render(request, "profile.html", {'user_data': user_data})
 
 @login_required
 def get_current_track_endpoint(request):
@@ -655,3 +675,43 @@ def calculate_compatibility(user1, user2):
     except Exception as e:
         print(f"Error calculating compatibility: {e}")
         return None
+@login_required
+def get_connections(request):
+    current_user = request.user
+    User = get_user_model()
+
+    # Get all friendships
+    friendships = Friendship.objects.all()
+
+    # Collect user nodes
+    users = set()
+    for friendship in friendships:
+        users.add(friendship.user1)
+        users.add(friendship.user2)
+
+    # Ensure the current user is included in the nodes
+    users.add(current_user)
+
+    nodes = [
+        {
+            "id": user.username,
+            "username": user.username,
+            "isCurrentUser": user == current_user
+        }
+        for user in users
+    ]
+
+    # Collect links (connections)
+    links = [
+        {"source": friendship.user1.username, "target": friendship.user2.username}
+        for friendship in friendships
+    ]
+
+    return JsonResponse({"nodes": nodes, "links": links})
+
+def get_all_users(request):
+    """
+    API endpoint to return all active registered users.
+    """
+    users = get_user_model().objects.filter(is_active=True).values("username")  # Filter active users
+    return JsonResponse({"users": list(users)})

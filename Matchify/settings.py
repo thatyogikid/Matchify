@@ -26,7 +26,7 @@ SECRET_KEY = 'django-insecure-vzj8-u558g8z&y!*vy2%(&tuy!v1k@b0)ao8*rm&89l97+!*jt
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = ["*"]
 
 LOGOUT_REDIRECT_URL = "/"
 LOGIN_URL = '/login'
@@ -134,8 +134,15 @@ USE_TZ = True
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/5.1/howto/static-files/
 
-STATIC_URL = 'static/'
-STATICFILES_DIRS = (os.path.join(BASE_DIR, "static"),)
+STATIC_URL = "/static/"
+
+# Use static files from inside the app during development
+STATICFILES_DIRS = [
+    os.path.join(BASE_DIR, "Matchifyapp/static"),
+]
+
+# This is only used when running `collectstatic`
+STATIC_ROOT = os.path.join(BASE_DIR, "staticfiles")
 
 from django.contrib.messages import constants as message_constants
 
