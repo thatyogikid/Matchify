@@ -106,6 +106,10 @@ document.addEventListener("DOMContentLoaded", function () {
         .then(allUsersData => {
             const allUsers = allUsersData.users;
 
+            // DEBUG: Log all user IDs and usernames
+            console.log('All users:', allUsers);
+            console.log('currentUserId:', currentUserId);
+
             // Fetch connections data
             fetch("/api/connections")
                 .then(response => response.json())
@@ -130,22 +134,73 @@ document.addEventListener("DOMContentLoaded", function () {
 
                     // Create a map to store nodes by their ID for quick lookup
                     const nodesById = new Map(connectionsData.nodes.map(node => [node.id, node]));
+                    // DEBUG: Log all node IDs
+                    console.log('Node IDs:', Array.from(nodesById.keys()));
 
                     // Fetch pending friend requests
                     fetch("/api/pending_requests")
                         .then(response => response.json())
                         .then(data => {
+                            // DEBUG: Log pending requests
+                            console.log('Pending requests:', data.pending_requests);
                             // Update nodes with pending requests
                             data.pending_requests.forEach(request => {
                                 const node = nodesById.get(request.receiver_id);
                                 if (node) {
                                     node.hasPendingRequest = true;
-                                    // Update the visual representation
                                     d3.select(`#node-${node.id}`)
                                         .selectAll("circle")
                                         .attr("stroke", "#FFD700")
                                         .style("filter", "url(#friend-glow)");
                                 }
+                            });
+
+                            // Draw yellow lines for outgoing pending requests
+                            // Try both number and username for source/target
+                            const pendingLinks = data.pending_requests
+                                .filter(request => request.sender_id === currentUserId || request.sender_id == currentUserId)
+                                .map(request => {
+                                    // Try to match both by ID and username
+                                    let source = currentUserId;
+                                    let target = request.receiver_id;
+                                    // If node IDs are usernames, use usernames
+                                    if (!nodesById.has(source) && nodesById.has(request.sender_username)) {
+                                        source = request.sender_username;
+                                    }
+                                    if (!nodesById.has(target) && nodesById.has(request.receiver_username)) {
+                                        target = request.receiver_username;
+                                    }
+                                    return { source, target };
+                                });
+                            console.log('Pending links to draw:', pendingLinks);
+
+                            // Add yellow lines for pending requests
+                            const pendingLinkSelection = container.append("g")
+                                .attr("class", "pending-links")
+                                .selectAll("line")
+                                .data(pendingLinks)
+                                .enter().append("line")
+                                .attr("class", "pending-link")
+                                .attr("stroke", "#FFD700")
+                                .attr("stroke-width", 4)
+                                .attr("stroke-dasharray", "8,4");
+
+                            // Update their positions on tick
+                            simulation.on("tick", () => {
+                                link
+                                    .attr("x1", d => d.source.x)
+                                    .attr("y1", d => d.source.y)
+                                    .attr("x2", d => d.target.x)
+                                    .attr("y2", d => d.target.y);
+
+                                nodeGroup.attr("transform", d => `translate(${d.x},${d.y})`);
+
+                                // Update the positions of the pending links
+                                container.selectAll(".pending-link")
+                                    .attr("x1", d => nodesById.get(d.source).x)
+                                    .attr("y1", d => nodesById.get(d.source).y)
+                                    .attr("x2", d => nodesById.get(d.target).x)
+                                    .attr("y2", d => nodesById.get(d.target).y);
                             });
                         })
                         .catch(error => console.error("Error fetching pending requests:", error));
@@ -209,16 +264,17 @@ document.addEventListener("DOMContentLoaded", function () {
                         .attr("id", d => `node-${d.id}`)  // Add ID for easy selection
                         .call(drag(simulation));
 
-                    // Add outer circle for pending friend requests
+                    // Add outer circle for pending friend requests (pending-outline)
                     nodeGroup.append("circle")
-                        .attr("r", d => getNodeRadius(d) * 1.2)
+                        .attr("class", "pending-outline")
+                        .attr("r", d => d.hasPendingRequest ? getNodeRadius(d) * 1.2 : 0)
                         .attr("fill", "none")
                         .attr("stroke", d => d.hasPendingRequest ? "#FFD700" : "none")
                         .attr("stroke-width", 5)
                         .style("filter", d => d.hasPendingRequest ? "url(#friend-glow)" : "none")
-                        .style("opacity", 0.8);
+                        .style("opacity", d => d.hasPendingRequest ? 0.8 : 0);
 
-                    // Add a second circle for extra visibility
+                    // Add a second circle for extra visibility (not the pending outline)
                     nodeGroup.append("circle")
                         .attr("r", d => getNodeRadius(d) * 1.3)
                         .attr("fill", "none")
@@ -250,6 +306,13 @@ document.addEventListener("DOMContentLoaded", function () {
                                     .attr("fill", getDarkerColor(nodeElement.attr("fill"), d.isCurrentUser))
                                     .style("filter", d.isCurrentUser ? "url(#user-glow)" : (d.isFriend ? "url(#friend-glow)" : "url(#other-glow)"));
 
+                                // Update pending-outline radius
+                                d3.select(this.parentNode).select(".pending-outline")
+                                    .transition()
+                                    .duration(200)
+                                    .attr("r", d.hasPendingRequest ? enlargedSize * 0.6 : 0)
+                                    .style("opacity", d.hasPendingRequest ? 0.8 : 0);
+
                                 d3.select(this.parentNode).select("text")
                                     .transition()
                                     .duration(200)
@@ -269,6 +332,13 @@ document.addEventListener("DOMContentLoaded", function () {
                                     .attr("fill", d.isCurrentUser ? "#22c55e" : "#2d3748")
                                     .style("filter", d.isCurrentUser ? "url(#user-glow)" : (d.isFriend ? "url(#friend-glow)" : "url(#other-glow)"));
 
+                                // Update pending-outline radius
+                                d3.select(this.parentNode).select(".pending-outline")
+                                    .transition()
+                                    .duration(200)
+                                    .attr("r", d.hasPendingRequest ? originalSize * 0.6 : 0)
+                                    .style("opacity", d.hasPendingRequest ? 0.8 : 0);
+
                                 d3.select(this.parentNode).select("text")
                                     .transition()
                                     .duration(200)
@@ -287,6 +357,13 @@ document.addEventListener("DOMContentLoaded", function () {
                                     .attr("y", -originalSize / 2)
                                     .attr("fill", d.isCurrentUser ? "#22c55e" : "#2d3748")
                                     .style("filter", d.isCurrentUser ? "url(#user-glow)" : (d.isFriend ? "url(#friend-glow)" : "url(#other-glow)"));
+
+                                // Update pending-outline radius
+                                d3.select(this.parentNode).select(".pending-outline")
+                                    .transition()
+                                    .duration(200)
+                                    .attr("r", d.hasPendingRequest ? originalSize * 0.6 : 0)
+                                    .style("opacity", d.hasPendingRequest ? 0.8 : 0);
 
                                 d3.select(this.parentNode).select("text")
                                     .transition()
@@ -440,9 +517,29 @@ document.addEventListener("DOMContentLoaded", function () {
                                             console.log(`Friend request sent to ${d.username}`);
                                             alert(`Friend request sent to ${d.username}!`);
                                             d.hasPendingRequest = true; // Update the node's state
+                                            // Update pending-outline immediately
+                                            d3.select(this.parentNode).select(".pending-outline")
+                                                .transition()
+                                                .duration(200)
+                                                .attr("r", getNodeRadius(d) * 1.2)
+                                                .attr("stroke", "#FFD700")
+                                                .style("filter", "url(#friend-glow)")
+                                                .style("opacity", 0.8);
                                         } else {
                                             console.error("Failed to send friend request:", data.error);
-                                            alert(`Failed to send friend request: ${data.error}`);
+                                            if (data.error === "Friend request already exists") {
+                                                alert("Friend request already sent!");
+                                                d.hasPendingRequest = true; // Update the node's state
+                                                d3.select(this.parentNode).select(".pending-outline")
+                                                    .transition()
+                                                    .duration(200)
+                                                    .attr("r", getNodeRadius(d) * 1.2)
+                                                    .attr("stroke", "#FFD700")
+                                                    .style("filter", "url(#friend-glow)")
+                                                    .style("opacity", 0.8);
+                                            } else {
+                                                alert(`Failed to send friend request: ${data.error}`);
+                                            }
                                         }
                                     })
                                     .catch(error => {
@@ -450,6 +547,13 @@ document.addEventListener("DOMContentLoaded", function () {
                                         if (error.message.includes("already exists")) {
                                             alert("Friend request already sent!");
                                             d.hasPendingRequest = true; // Update the node's state
+                                            d3.select(this.parentNode).select(".pending-outline")
+                                                .transition()
+                                                .duration(200)
+                                                .attr("r", getNodeRadius(d) * 1.2)
+                                                .attr("stroke", "#FFD700")
+                                                .style("filter", "url(#friend-glow)")
+                                                .style("opacity", 0.8);
                                         } else {
                                             alert("An error occurred while sending the friend request.");
                                         }
@@ -466,23 +570,6 @@ document.addEventListener("DOMContentLoaded", function () {
                         .attr("text-anchor", "middle")
                         .attr("alignment-baseline", "middle")
                         .style("pointer-events", "none");
-
-                    simulation.on("tick", () => {
-    link
-        .attr("x1", d => d.source.x)
-        .attr("y1", d => d.source.y)
-        .attr("x2", d => d.target.x)
-        .attr("y2", d => d.target.y);
-
-    nodeGroup.attr("transform", d => `translate(${d.x},${d.y})`);
-
-    // Update the positions of the pending links
-    container.selectAll(".pending-link")
-        .attr("x1", centralNode.x)
-        .attr("y1", centralNode.y)
-        .attr("x2", d => d.x)
-        .attr("y2", d => d.y);
-});
 
                     function drag(simulation) {
                         return d3.drag()

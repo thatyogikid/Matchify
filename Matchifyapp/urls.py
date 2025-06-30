@@ -23,4 +23,5 @@ urlpatterns = [
     path("api/connections", views.get_connections, name="get_connections"),
     path("profile/<str:username>/", views.profile, name="profile"),
     path("api/all_users", views.get_all_users, name="all_users"),
+    path('api/pending_requests', views.pending_requests, name='pending_requests'),
 ]

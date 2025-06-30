@@ -503,6 +503,36 @@ from django.contrib.auth.decorators import login_required
 from django.contrib.auth import get_user_model
 from .models import Friendship, FriendRequest
 
+
+
+@login_required
+def pending_requests(request):
+    # Outgoing requests (sent by current user)
+    outgoing = FriendRequest.objects.filter(from_user=request.user)
+    # Incoming requests (received by current user)
+    incoming = FriendRequest.objects.filter(to_user=request.user)
+
+    pending_requests = []
+    for req in outgoing:
+        pending_requests.append({
+            "sender_id": req.from_user.id,
+            "sender_username": req.from_user.username,
+            "receiver_id": req.to_user.id,
+            "receiver_username": req.to_user.username,
+            "status": "outgoing"
+        })
+    for req in incoming:
+        pending_requests.append({
+            "sender_id": req.from_user.id,
+            "sender_username": req.from_user.username,
+            "receiver_id": req.to_user.id,
+            "receiver_username": req.to_user.username,
+            "status": "incoming"
+        })
+
+    return JsonResponse({"pending_requests": pending_requests})
+
+
 @login_required
 def mapify(request):
     current_user = request.user
@@ -727,5 +757,5 @@ def get_all_users(request):
     """
     API endpoint to return all active registered users.
     """
-    users = get_user_model().objects.filter(is_active=True).values("username")  # Filter active users
+    users = get_user_model().objects.filter(is_active=True).values("id", "username")  # Filter active users
     return JsonResponse({"users": list(users)})
