@@ -90,10 +90,10 @@ WSGI_APPLICATION = 'Matchify.wsgi.application'
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
-        'NAME': "matchify",
-        "USER": "admin123",
-        "PASSWORD": "2018lebron",
-        "HOST": "matchify.cluster-cvwqyeyo4vgx.us-east-2.rds.amazonaws.com",
+        'NAME': "matchifydb",
+        "USER": "matchifydb_owner",
+        "PASSWORD": "npg_EXh1C8UAvLeP",
+        "HOST": "ep-blue-truth-a5p0pux0-pooler.us-east-2.aws.neon.tech",
         "PORT": "5432",
     }
 }

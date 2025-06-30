@@ -564,8 +564,22 @@ def mapify(request):
 @login_required
 def send_friend_request(request, username):
     to_user = get_object_or_404(get_user_model(), username=username)
-    FriendRequest.objects.create(from_user=request.user, to_user=to_user)
-    return JsonResponse({"success": True})
+    
+    # Check if friend request already exists
+    if FriendRequest.objects.filter(from_user=request.user, to_user=to_user).exists():
+        return JsonResponse({
+            "success": False,
+            "error": "Friend request already exists"
+        }, status=400)
+    
+    try:
+        FriendRequest.objects.create(from_user=request.user, to_user=to_user)
+        return JsonResponse({"success": True})
+    except Exception as e:
+        return JsonResponse({
+            "success": False,
+            "error": str(e)
+        }, status=500)
 
 @login_required
 def accept_friend_request(request, username):

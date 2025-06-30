@@ -123,12 +123,32 @@ document.addEventListener("DOMContentLoaded", function () {
                             id: user.id,
                             username: user.username,
                             isCurrentUser: user.isCurrentUser || false,
-                            isFriend: false // Initialize as false
+                            isFriend: false, // Initialize as false
+                            hasPendingRequest: false // Added for pending request
                         });
                     });
 
                     // Create a map to store nodes by their ID for quick lookup
                     const nodesById = new Map(connectionsData.nodes.map(node => [node.id, node]));
+
+                    // Fetch pending friend requests
+                    fetch("/api/pending_requests")
+                        .then(response => response.json())
+                        .then(data => {
+                            // Update nodes with pending requests
+                            data.pending_requests.forEach(request => {
+                                const node = nodesById.get(request.receiver_id);
+                                if (node) {
+                                    node.hasPendingRequest = true;
+                                    // Update the visual representation
+                                    d3.select(`#node-${node.id}`)
+                                        .selectAll("circle")
+                                        .attr("stroke", "#FFD700")
+                                        .style("filter", "url(#friend-glow)");
+                                }
+                            });
+                        })
+                        .catch(error => console.error("Error fetching pending requests:", error));
 
                     // Ensure all nodes have the isFriend property set
                     connectionsData.links.forEach(link => {
@@ -156,11 +176,12 @@ document.addEventListener("DOMContentLoaded", function () {
                     centralNode.fy = height / 2;
 
                     simulation = d3.forceSimulation(connectionsData.nodes)
-                        .force("link", d3.forceLink(connectionsData.links).id(d => d.id).distance(200))
-                        .force("charge", d3.forceManyBody().strength(-1000))
+                        .force("link", d3.forceLink(connectionsData.links).id(d => d.id).distance(100))
+                        .force("charge", d3.forceManyBody().strength(d => d.isCurrentUser ? 0 : -500))
                         .force("center", d3.forceCenter(width / 2, height / 2))
-                        .force("x", d3.forceX(width / 2).strength(0.05))
-                        .force("y", d3.forceY(height / 2).strength(0.05));
+                        .force("x", d3.forceX(width / 2).strength(d => d.isCurrentUser ? 0 : 0.05))
+                        .force("y", d3.forceY(height / 2).strength(d => d.isCurrentUser ? 0 : 0.05))
+                        .force("collision", d3.forceCollide().radius(d => getNodeRadius(d) * 1.5).strength(0.5));
 
                     function getNodeRadius(d) {
                         if (d.isFriend == undefined){
@@ -185,7 +206,25 @@ document.addEventListener("DOMContentLoaded", function () {
                         .selectAll("g")
                         .data(connectionsData.nodes)
                         .enter().append("g")
+                        .attr("id", d => `node-${d.id}`)  // Add ID for easy selection
                         .call(drag(simulation));
+
+                    // Add outer circle for pending friend requests
+                    nodeGroup.append("circle")
+                        .attr("r", d => getNodeRadius(d) * 1.2)
+                        .attr("fill", "none")
+                        .attr("stroke", d => d.hasPendingRequest ? "#FFD700" : "none")
+                        .attr("stroke-width", 5)
+                        .style("filter", d => d.hasPendingRequest ? "url(#friend-glow)" : "none")
+                        .style("opacity", 0.8);
+
+                    // Add a second circle for extra visibility
+                    nodeGroup.append("circle")
+                        .attr("r", d => getNodeRadius(d) * 1.3)
+                        .attr("fill", "none")
+                        .attr("stroke", d => d.hasPendingRequest ? "#FFD700" : "none")
+                        .attr("stroke-width", 2)
+                        .style("opacity", 0.4);
 
                     const node = nodeGroup.append("rect")
                         .attr("width", d => getNodeRadius(d) * 2)
@@ -377,6 +416,10 @@ document.addEventListener("DOMContentLoaded", function () {
                                     }, 100);
                                 } else {
                                     console.log(`Access denied: ${d.username} is not a friend.`);
+                                    if (d.hasPendingRequest) {
+                                        alert("Friend request already sent!");
+                                        return;
+                                    }
                                     fetch(`/send-friend-request/${d.username}`, {
                                         method: "POST",
                                         headers: {
@@ -384,11 +427,19 @@ document.addEventListener("DOMContentLoaded", function () {
                                             "X-CSRFToken": getCSRFToken() // Ensure CSRF token is included
                                         }
                                     })
-                                    .then(response => response.json())
+                                    .then(response => {
+                                        if (!response.ok) {
+                                            return response.json().then(data => {
+                                                throw new Error(data.error || "Friend request already exists");
+                                            });
+                                        }
+                                        return response.json();
+                                    })
                                     .then(data => {
                                         if (data.success) {
                                             console.log(`Friend request sent to ${d.username}`);
                                             alert(`Friend request sent to ${d.username}!`);
+                                            d.hasPendingRequest = true; // Update the node's state
                                         } else {
                                             console.error("Failed to send friend request:", data.error);
                                             alert(`Failed to send friend request: ${data.error}`);
@@ -396,7 +447,12 @@ document.addEventListener("DOMContentLoaded", function () {
                                     })
                                     .catch(error => {
                                         console.error("Error sending friend request:", error);
-                                        alert("An error occurred while sending the friend request.");
+                                        if (error.message.includes("already exists")) {
+                                            alert("Friend request already sent!");
+                                            d.hasPendingRequest = true; // Update the node's state
+                                        } else {
+                                            alert("An error occurred while sending the friend request.");
+                                        }
                                     });
                                 }
                             }
